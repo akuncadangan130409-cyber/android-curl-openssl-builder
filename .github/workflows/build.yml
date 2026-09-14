@@ -1,0 +1,128 @@
+name: Build cURL 8.22.0 & OpenSSL 4.0.2 (arm64-v8a)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r27c
+          add-to-path: true
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget tar perl make clang llvm zip
+
+      - name: Download Target Sources
+        run: |
+          mkdir -p src
+          cd src
+
+          # Download OpenSSL 4.0.2 sesuai tag release
+          wget https://github.com/openssl/openssl/archive/refs/tags/openssl-4.0.2.tar.gz -O openssl-4.0.2.tar.gz
+          tar -xf openssl-4.0.2.tar.gz
+          mv openssl-openssl-4.0.2 openssl || mv openssl-4.0.2 openssl
+
+          # Download cURL 8.22.0 sesuai tag release
+          wget https://github.com/curl/curl/releases/download/curl-8_22_0/curl-8.22.0.tar.gz -O curl-8.22.0.tar.gz || \
+          wget https://github.com/curl/curl/archive/refs/tags/curl-8_22_0.tar.gz -O curl-8.22.0.tar.gz
+          tar -xf curl-*.tar.gz
+          mv curl-* curl
+
+      - name: Compile OpenSSL (openssl-android-arm64-v8a)
+        run: |
+          export TOOLCHAIN="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64"
+          export API=21
+          export TARGET=aarch64-linux-android
+          export CC="$TOOLCHAIN/bin/${TARGET}${API}-clang"
+          export CXX="$TOOLCHAIN/bin/${TARGET}${API}-clang++"
+          export AR="$TOOLCHAIN/bin/llvm-ar"
+          export AS="$CC"
+          export RANLIB="$TOOLCHAIN/bin/llvm-ranlib"
+          export PATH="$TOOLCHAIN/bin:$PATH"
+
+          PREFIX_OPENSSL="$GITHUB_WORKSPACE/output/openssl-android-arm64-v8a"
+          mkdir -p "$PREFIX_OPENSSL"
+
+          cd src/openssl
+          ./Configure android-arm64 \
+            -D__ANDROID_API__=$API \
+            no-shared \
+            no-unit-test \
+            no-tests \
+            --prefix="$PREFIX_OPENSSL" \
+            --openssldir="$PREFIX_OPENSSL"
+
+          make -j$(nproc)
+          make install_sw
+
+          # Rapikan symlink lib64 -> lib jika OpenSSL menempatkannya di lib64
+          if [ -d "$PREFIX_OPENSSL/lib64" ] && [ ! -d "$PREFIX_OPENSSL/lib" ]; then
+            ln -s lib64 "$PREFIX_OPENSSL/lib"
+          fi
+
+      - name: Compile cURL (curl-android-arm64-v8a)
+        run: |
+          export TOOLCHAIN="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64"
+          export API=21
+          export TARGET=aarch64-linux-android
+          export CC="$TOOLCHAIN/bin/${TARGET}${API}-clang"
+          export CXX="$TOOLCHAIN/bin/${TARGET}${API}-clang++"
+          export AR="$TOOLCHAIN/bin/llvm-ar"
+          export AS="$CC"
+          export RANLIB="$TOOLCHAIN/bin/llvm-ranlib"
+          export PATH="$TOOLCHAIN/bin:$PATH"
+
+          PREFIX_CURL="$GITHUB_WORKSPACE/output/curl-android-arm64-v8a"
+          PREFIX_OPENSSL="$GITHUB_WORKSPACE/output/openssl-android-arm64-v8a"
+          mkdir -p "$PREFIX_CURL"
+
+          cd src/curl
+          ./configure \
+            --host=aarch64-linux-android \
+            --target=aarch64-linux-android \
+            --prefix="$PREFIX_CURL" \
+            --with-openssl="$PREFIX_OPENSSL" \
+            --enable-static \
+            --disable-shared \
+            --disable-debug \
+            --disable-curldebug \
+            --disable-manual \
+            --disable-ldap \
+            --disable-ldaps \
+            --disable-rtsp \
+            --disable-dict \
+            --disable-telnet \
+            --disable-tftp \
+            --disable-pop3 \
+            --disable-imap \
+            --disable-smtp \
+            --disable-gopher \
+            --disable-sspi \
+            --without-libidn2 \
+            --without-nghttp2 \
+            CFLAGS="-fPIE -fPIC" \
+            LDFLAGS="-pie"
+
+          make -j$(nproc)
+          make install
+
+      - name: Create Release Archive
+        run: |
+          cd $GITHUB_WORKSPACE/output
+          zip -r $GITHUB_WORKSPACE/curl-openssl-android-arm64-v8a.zip curl-android-arm64-v8a openssl-android-arm64-v8a
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: curl-openssl-android-arm64-v8a
+          path: curl-openssl-android-arm64-v8a.zip
