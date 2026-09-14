@@ -121,8 +121,11 @@ jobs:
             --disable-smtp \
             --disable-gopher \
             --disable-sspi \
+            --without-libpsl \
             --without-libidn2 \
             --without-nghttp2 \
+            --without-brotli \
+            --without-zstd \
             CFLAGS="-fPIE -fPIC" \
             LDFLAGS="-pie"
 
