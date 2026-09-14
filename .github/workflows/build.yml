@@ -1,4 +1,4 @@
-name: Build cURL and OpenSSL (arm64-v8a)
+name: Build cURL & OpenSSL for Android (arm64-v8a)
 
 on:
   workflow_dispatch:
@@ -22,32 +22,28 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y wget tar perl make clang llvm zip autoconf automake libtool
 
-      - name: Download & Prepare Sources
+      - name: Download & Extract Sources
         run: |
           mkdir -p src
           cd src
 
-          # 1. Download OpenSSL
-          echo "[+] Mengunduh OpenSSL..."
-          wget -q --show-progress https://github.com/openssl/openssl/archive/refs/tags/openssl-4.0.2.tar.gz -O openssl.tar.gz 2>/dev/null || \
-          wget -q --show-progress https://github.com/openssl/openssl/releases/download/openssl-4.0.2/openssl-4.0.2.tar.gz -O openssl.tar.gz 2>/dev/null || \
-          wget -q --show-progress https://github.com/openssl/openssl/archive/refs/tags/openssl-3.4.0.tar.gz -O openssl.tar.gz
-
+          # 1. Unduh OpenSSL 3.4.1 (Versi stabil LTS yang kompatibel penuh dengan cURL)
+          echo "[+] Mengunduh OpenSSL 3.4.1..."
+          wget -q --show-progress https://github.com/openssl/openssl/releases/download/openssl-3.4.1/openssl-3.4.1.tar.gz -O openssl.tar.gz || \
+          wget -q --show-progress https://github.com/openssl/openssl/archive/refs/tags/openssl-3.4.1.tar.gz -O openssl.tar.gz
+          
           mkdir -p openssl
           tar -xf openssl.tar.gz -C openssl --strip-components=1
 
-          # 2. Download cURL
+          # 2. Unduh cURL 8.11.1
           echo "[+] Mengunduh cURL..."
-          wget -q --show-progress https://curl.se/download/curl-8.11.1.tar.gz -O curl.tar.gz 2>/dev/null || \
-          wget -q --show-progress https://github.com/curl/curl/releases/download/curl-8_11_1/curl-8.11.1.tar.gz -O curl.tar.gz 2>/dev/null || \
-          wget -q --show-progress https://github.com/curl/curl/archive/refs/tags/curl-8_22_0.tar.gz -O curl.tar.gz
-
+          wget -q --show-progress https://curl.se/download/curl-8.11.1.tar.gz -O curl.tar.gz || \
+          wget -q --show-progress https://github.com/curl/curl/releases/download/curl-8_11_1/curl-8.11.1.tar.gz -O curl.tar.gz
+          
           mkdir -p curl
           tar -xf curl.tar.gz -C curl --strip-components=1
 
-          # Jika file configure belum ada (source dari git tag), jalankan buildconf
           if [ ! -f "curl/configure" ]; then
-            echo "[+] Menjalankan buildconf untuk membangkitkan configure..."
             cd curl && ./buildconf && cd ..
           fi
 
@@ -72,13 +68,14 @@ jobs:
             no-shared \
             no-unit-test \
             no-tests \
+            no-docs \
             --prefix="$PREFIX_OPENSSL" \
             --openssldir="$PREFIX_OPENSSL"
 
           make -j$(nproc)
           make install_sw
 
-          # Rapikan folder lib jika OpenSSL menempatkannya di lib64
+          # Pastikan symlink lib tersedia jika OpenSSL menginstall ke lib64
           if [ -d "$PREFIX_OPENSSL/lib64" ] && [ ! -d "$PREFIX_OPENSSL/lib" ]; then
             ln -s lib64 "$PREFIX_OPENSSL/lib"
           fi
